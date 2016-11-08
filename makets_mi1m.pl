@@ -1,5 +1,15 @@
 #!/usr/bin/perl
 
+##-----------------------------------------------------------------------
+##
+## 2016/11/08 
+## Ryoichi Naito, ryoichi.naito@thomsonreuters.com
+##
+## To make a contenuous time-series data for TRMI. 
+## Main objective is to enable users to back test with the archive data.
+##
+##-----------------------------------------------------------------------
+
 use warnings;
 use strict;
 use DateTime;
@@ -64,66 +74,100 @@ sub SplitFiles {
 sub MakeTimeSeries {
 
     my $sourceFile = $_[0];
-    my $tsFile_ns = "ns_ts.txt";
-    my $tsFile_so = "so_ts.txt";
-    my $tsFile_ne = "ne_ts.txt";
-    my $lineCount = 0;
-
-    # Initialization for datetime variables;
-    my $curWindowTimeStamp='';
-    my $curWTS_yea='';
-    my $curWTS_mon='';
-    my $curWTS_day='';
-    my $curWTS_hou='';
-    my $curWTS_min='';
-    my $lastDt='';
-    my $lastDt1m='';
-    my $curDt='';
 
     # dataType=News_Social ---------------------
-    my $inFile = $sourceFile."ns.txt";
+    # my $inFile = $sourceFile."ns.txt";
+    my @allInFiles = ($sourceFile."ns.txt", $sourceFile."so.txt", $sourceFile."ne.txt");
 
-    print "Working on News_Social : $inFile\n";
-    open(TSIN, "<$inFile");
-    open(TSNS, ">$tsFile_ns") or die $!;
-    print "opening $inFile to read..\n";
+    foreach my $curInFile (@allInFiles) {
 
-    while(<TSIN>) {
-        chomp($_);
-        my @dline = split(/,/, $_);
-        $curWindowTimeStamp = $dline[2];
+        # Initialization for all variables.
+        my $lineCount = 0;
+        my $curWindowTimeStamp='';
+        my $curWTS_yea='';
+        my $curWTS_mon='';
+        my $curWTS_day='';
+        my $curWTS_hou='';
+        my $curWTS_min='';
+        my $lastDt='';
+        my $lastDt1m='';
+        my $curDt='';
+        my $fId=''; # element 0
+        my $fAssetCode=''; # element 1
+        my $fDataType=''; # element 3
+        my $fSystemVersion=''; # element 4
+        my $curOutFile = $curInFile."out.txt";
 
-        $curWTS_yea = substr($curWindowTimeStamp, 0, 4);
-        $curWTS_mon = substr($curWindowTimeStamp, 5, 2);
-        $curWTS_day = substr($curWindowTimeStamp, 8, 2);
-        $curWTS_hou = substr($curWindowTimeStamp, 11, 2);
-        $curWTS_min = substr($curWindowTimeStamp, 14, 2);
+        print "Opening $curInFile to read and $curOutFile to write out\n";
+        open(TSIN, "<$curInFile");
+        open(TSNS, ">$curOutFile") or die $!;
 
-        # The first line with no header
-        if($lineCount==0) {
-            $lastDt = DateTime->new(year=>$curWTS_yea, month=>$curWTS_mon, day=>$curWTS_day,
-                                    hour=>$curWTS_hou, minute=>$curWTS_min);
-            $lastDt1m = $lastDt->add(minutes=>1);
-            print TSNS join(',', @dline), "\n";
-        }
-        else {
-            $curDt = DateTime->new(year=>$curWTS_yea, month=>$curWTS_mon, day=>$curWTS_day,
-                                   hour=>$curWTS_hou, minute=>$curWTS_min);
+        while(<TSIN>) {
+            chomp($_);
+            my @dline = split(/,/, $_);
 
-            if($curDt == $lastDt1m) {
+            $curWindowTimeStamp = $dline[2];
+            $fId = $dline[0];
+            $fAssetCode = $dline[1];
+            $fDataType = $dline[3];
+            $fSystemVersion = $dline[4];
+
+            $curWTS_yea = substr($curWindowTimeStamp, 0, 4);
+            $curWTS_mon = substr($curWindowTimeStamp, 5, 2);
+            $curWTS_day = substr($curWindowTimeStamp, 8, 2);
+            $curWTS_hou = substr($curWindowTimeStamp, 11, 2);
+            $curWTS_min = substr($curWindowTimeStamp, 14, 2);
+
+            # The first line with no header
+            if($lineCount==0) {
+                $lastDt = DateTime->new(year=>$curWTS_yea, month=>$curWTS_mon, day=>$curWTS_day,
+                                        hour=>$curWTS_hou, minute=>$curWTS_min);
+                # Stores necessary fields
+                $lastDt1m = $lastDt->add(minutes=>1);
                 print TSNS join(',', @dline), "\n";
-                $lastDt1m = $curDt->add(minutes=>1);
             }
-            else {
-                print "not matched.\n";
-                exit;
-            }
-        }
-        $lineCount++;
-    }
-    close(TSIN);
-    close(TSNS);
-}
 
-exit(0);
+            # From line 2. Compare $curDt with $lastDt1m
+            else {
+                $curDt = DateTime->new(year=>$curWTS_yea, month=>$curWTS_mon, day=>$curWTS_day,
+                                       hour=>$curWTS_hou, minute=>$curWTS_min);
+
+                # Write out if minute diff is 1 
+                if($curDt == $lastDt1m) {
+                    print TSNS join(',', @dline), "\n";
+                    $lastDt1m = $curDt->add(minutes=>1);
+                }
+
+                # Put additional lines with missing minutes data
+                else {
+                    my $diffMin = $curDt - $lastDt1m;
+                    my $intDiffMin = $diffMin->minutes;
+                
+                    print "TimeStamp++ does not match. Adding $intDiffMin rows.\n";
+
+                    for (my $i=0; $i < $intDiffMin; $i++) {
+                        # Make a new TimeStamp with $curDt.
+                        # FORMAT_id              = "mp:2016-01-01_00.14.00.News_Social.CMPNY_GRP.MPTRXJP225"
+                        # FORMAT_windowTimestamp = "2016-01-01T00:10:00.000Z"
+                        my $formatTStamp1 = $lastDt1m->strftime('%Y-%m-%d');
+                        my $formatTStamp2 = $lastDt1m->strftime('%H.%M.%S');
+                        my $formatTStamp3 = $lastDt1m->strftime('%H:%M:%S').'.000Z';
+                        $fId = 'mp:'.$formatTStamp1.'_'.$formatTStamp2.'.'.$fDataType.'.'.'CMPNY_GRP.MPTRXJP225'; # <- might need to be amended
+                        $curWindowTimeStamp = $formatTStamp1.'T'.$formatTStamp3;
+                    
+                        my @addition = ($fId, $fAssetCode, $curWindowTimeStamp, $fDataType, $fSystemVersion,'','','','','','','','','','','','','','','','','','','','','','','');
+                        print TSNS join(',', @addition), "\n";
+                        $lastDt1m = $lastDt1m->add(minutes=>1);
+                    }
+                    print TSNS join(',', @dline), "\n";
+                    $lastDt1m = $curDt->add(minutes=>1);
+                }
+            }
+            $lineCount++;
+        }
+        close(TSIN);
+        close(TSNS);
+    }
+}
+exit;
 
