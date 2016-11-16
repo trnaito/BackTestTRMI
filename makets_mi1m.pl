@@ -43,9 +43,9 @@ sub SplitFiles {
     # initial definitions
     my $file = $_[0];
 
-    my $outfile_ns = "./$file"."ns.txt";
-    my $outfile_so = "./$file"."so.txt";
-    my $outfile_ne = "./$file"."ne.txt";
+    my $outfile_ns = "./$file"."_ns.txt";
+    my $outfile_so = "./$file"."_so.txt";
+    my $outfile_ne = "./$file"."_ne.txt";
 
     open(IN, "<$file");
     open(IN_NS, ">$outfile_ns") or die $!;
@@ -77,7 +77,7 @@ sub MakeTimeSeries {
 
     # dataType=News_Social ---------------------
     # my $inFile = $sourceFile."ns.txt";
-    my @allInFiles = ($sourceFile."ns.txt", $sourceFile."so.txt", $sourceFile."ne.txt");
+    my @allInFiles = ($sourceFile."_ns.txt", $sourceFile."_so.txt", $sourceFile."_ne.txt");
 
     foreach my $curInFile (@allInFiles) {
 
@@ -155,7 +155,7 @@ sub MakeTimeSeries {
                         $fId = 'mp:'.$formatTStamp1.'_'.$formatTStamp2.'.'.$fDataType.'.'.'CMPNY_GRP.MPTRXJP225'; # <- might need to be amended
                         $curWindowTimeStamp = $formatTStamp1.'T'.$formatTStamp3;
                     
-                        my @addition = ($fId, $fAssetCode, $curWindowTimeStamp, $fDataType, $fSystemVersion,'','','','','','','','','','','','','','','','','','','','','','','');
+                        my @addition = ($fId, $fAssetCode, $curWindowTimeStamp, $fDataType, $fSystemVersion,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0);
                         print TSNS join(',', @addition), "\n";
                         $lastDt1m = $lastDt1m->add(minutes=>1);
                     }
